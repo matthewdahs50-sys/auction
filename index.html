@@ -71,11 +71,21 @@ let lastBid = {};
 // 🔊 VOICE
 function speak(text) {
   const msg = new SpeechSynthesisUtterance(text);
-  const voices = speechSynthesis.getVoices();
-  msg.voice = voices.find(v => v.name.includes("David")) || voices[0];
-  speechSynthesis.speak(msg);
-}
 
+  let voices = speechSynthesis.getVoices();
+
+  // wait until voices load (important fix)
+  if (!voices.length) {
+    speechSynthesis.onvoiceschanged = () => {
+      voices = speechSynthesis.getVoices();
+      msg.voice = voices[0];
+      speechSynthesis.speak(msg);
+    };
+  } else {
+    msg.voice = voices[0];
+    speechSynthesis.speak(msg);
+  }
+}
 // 📦 CSV parser
 function parseCSV(text) {
   return text.replace(/\r/g, "").split("\n").map(r => r.split(","));
@@ -137,6 +147,8 @@ function render() {
   document.getElementById("cars").innerHTML = html;
 
   // 🔥 ATTACH BUTTON EVENTS (IMPORTANT FIX)
+// force rebind after DOM update
+setTimeout(() => {
   document.querySelectorAll("button[data-index]").forEach(btn => {
     btn.onclick = () => {
       const index = Number(btn.dataset.index);
@@ -144,6 +156,7 @@ function render() {
       placeBid(index, amt);
     };
   });
+}, 50);
 }
 
 // 💰 BID FUNCTION (NOW GUARANTEED WORKING)
