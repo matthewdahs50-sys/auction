@@ -64,49 +64,26 @@ img {
 const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQtiWlgxCNrAbk0bMhI2EEkDHeVtP2FHSV_F2dpZFrf8m7eomJBDYkN69vNTpD9YGScx4Ceq-E179Q9/pub?gid=0&single=true&output=csv";
 
 let carsData = [];
-let lastBid = {};
 let state = {};
+let lastBid = {};
 
-// 🔊 VOICE
+// 🔊 Voice system
 function speak(text) {
   const msg = new SpeechSynthesisUtterance(text);
   const voices = speechSynthesis.getVoices();
   msg.voice = voices.find(v => v.name.includes("David")) || voices[0];
+  msg.rate = 1;
   speechSynthesis.speak(msg);
 }
 
-// ✅ SAFE CSV PARSER (handles commas + quotes)
+// 🧠 Parse CSV safely
 function parseCSV(text) {
-  const rows = [];
-  const lines = text.replace(/\r/g, "").split("\n");
-
-  for (let line of lines) {
-    const result = [];
-    let current = "";
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === "," && !inQuotes) {
-        result.push(current);
-        current = "";
-      } else {
-        current += char;
-      }
-    }
-
-    result.push(current);
-    rows.push(result);
-  }
-
-  return rows;
+  return text.replace(/\r/g, "").split("\n").map(r => r.split(","));
 }
 
-// 🚗 LOAD DATA
+// 🚗 Load sheet data
 async function loadCars() {
+
   try {
     const res = await fetch(SHEET_URL);
     const text = await res.text();
@@ -123,26 +100,38 @@ async function loadCars() {
 
     render();
 
-  } catch (err) {
+  } catch (e) {
     document.getElementById("cars").innerHTML =
-      "❌ Failed to load data (check sheet)";
-    console.error(err);
+      "❌ Failed to load auction data";
   }
 }
 
-// 🎨 RENDER
+// 🎨 Render UI + BID BUTTONS
 function render() {
+
   let html = `<div class="grid">`;
 
-  carsData.forEach(car => {
+  carsData.forEach((car, index) => {
+
+    const id = car.car.replace(/\s/g, "");
+
     html += `
       <div class="card">
+
         <img src="${car.image}">
+
         <div class="content">
+
           <h3>${car.car}</h3>
-          <div class="price">$${car.bid}</div>
-          <div>${car.bidder}</div>
-          <div class="timer" id="t-${car.car.replace(/\s/g, "")}"></div>
+
+          <div class="price" id="price-${id}">$${car.bid}</div>
+          <div id="bidder-${id}">${car.bidder}</div>
+
+          <div class="timer" id="t-${id}"></div>
+
+          <button onclick="placeBid(${index}, 100)">➕ Bid +$100</button>
+          <button onclick="placeBid(${index}, 500)">🔥 Bid +$500</button>
+
         </div>
       </div>
     `;
@@ -152,12 +141,34 @@ function render() {
   document.getElementById("cars").innerHTML = html;
 }
 
-// ⏱ TIMER + VOICE
+// 💰 BID FUNCTION (LOCAL REAL-TIME UPDATE)
+function placeBid(index, amount) {
+
+  const car = carsData[index];
+
+  car.bid += amount;
+  car.bidder = "You";
+
+  const id = car.car.replace(/\s/g, "");
+
+  // Update UI instantly
+  document.getElementById("price-" + id).innerText = "$" + car.bid;
+  document.getElementById("bidder-" + id).innerText = "You";
+
+  // Voice announcement
+  speak(car.car + " bid placed " + car.bid);
+
+  lastBid[car.car] = car.bid;
+}
+
+// ⏱ Timer + auction voice
 function update() {
+
   carsData.forEach(car => {
 
-    const id = "t-" + car.car.replace(/\s/g, "");
-    const el = document.getElementById(id);
+    const id = car.car.replace(/\s/g, "");
+    const el = document.getElementById("t-" + id);
+
     if (!el) return;
 
     const diff = new Date(car.endTime).getTime() - Date.now();
@@ -188,19 +199,12 @@ function update() {
       speak(car.car + " SOLD to " + car.bidder);
       state[car.car] = 3;
     }
-
-    if (lastBid[car.car] && car.bid > lastBid[car.car]) {
-      speak(car.car + " new bid " + car.bid);
-    }
-
-    lastBid[car.car] = car.bid;
-
   });
 }
 
 // 🔄 LOOP
 loadCars();
-setInterval(loadCars, 3000);
+setInterval(loadCars, 5000);
 setInterval(update, 1000);
 
 </script>
