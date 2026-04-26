@@ -61,9 +61,7 @@ img {
 
 <script>
 
-const SHEET_URL = "https://api.allorigins.win/raw?url=" + encodeURIComponent(
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQtiWlgxCNrAbk0bMhI2EEkDHeVtP2FHSV_F2dpZFrf8m7eomJBDYkN69vNTpD9YGScx4Ceq-E179Q9/pub?gid=0&single=true&output=csv"
-);
+const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQtiWlgxCNrAbk0bMhI2EEkDHeVtP2FHSV_F2dpZFrf8m7eomJBDYkN69vNTpD9YGScx4Ceq-E179Q9/pub?gid=0&single=true&output=csv";
 
 let carsData = [];
 let lastBid = {};
@@ -72,39 +70,71 @@ let state = {};
 // 🔊 VOICE
 function speak(text) {
   const msg = new SpeechSynthesisUtterance(text);
-
   const voices = speechSynthesis.getVoices();
   msg.voice = voices.find(v => v.name.includes("David")) || voices[0];
-
   speechSynthesis.speak(msg);
 }
 
-// 🚗 LOAD DATA (NO API)
+// ✅ SAFE CSV PARSER (handles commas + quotes)
+function parseCSV(text) {
+  const rows = [];
+  const lines = text.replace(/\r/g, "").split("\n");
+
+  for (let line of lines) {
+    const result = [];
+    let current = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === "," && !inQuotes) {
+        result.push(current);
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+
+    result.push(current);
+    rows.push(result);
+  }
+
+  return rows;
+}
+
+// 🚗 LOAD DATA
 async function loadCars() {
+  try {
+    const res = await fetch(SHEET_URL);
+    const text = await res.text();
 
-  const res = await fetch(SHEET_URL);
-  const text = await res.text();
+    const rows = parseCSV(text);
 
-  const rows = text.split("\n").map(r => r.split(","));
+    carsData = rows.slice(1).map(r => ({
+      car: r[0],
+      image: r[1],
+      bid: Number(r[2]) || 0,
+      bidder: r[3] || "None",
+      endTime: r[4]
+    })).filter(c => c.car);
 
-  carsData = rows.slice(1).map(r => ({
-    car: r[0],
-    image: r[1],
-    bid: Number(r[2]),
-    bidder: r[3],
-    endTime: r[4]
-  }));
+    render();
 
-  render();
+  } catch (err) {
+    document.getElementById("cars").innerHTML =
+      "❌ Failed to load data (check sheet)";
+    console.error(err);
+  }
 }
 
 // 🎨 RENDER
 function render() {
-
   let html = `<div class="grid">`;
 
   carsData.forEach(car => {
-
     html += `
       <div class="card">
         <img src="${car.image}">
@@ -112,7 +142,7 @@ function render() {
           <h3>${car.car}</h3>
           <div class="price">$${car.bid}</div>
           <div>${car.bidder}</div>
-          <div class="timer" id="t-${car.car}"></div>
+          <div class="timer" id="t-${car.car.replace(/\s/g, "")}"></div>
         </div>
       </div>
     `;
@@ -122,12 +152,12 @@ function render() {
   document.getElementById("cars").innerHTML = html;
 }
 
-// ⏱ TIMER + VOICE LOGIC
+// ⏱ TIMER + VOICE
 function update() {
-
   carsData.forEach(car => {
 
-    const el = document.getElementById("t-" + car.car);
+    const id = "t-" + car.car.replace(/\s/g, "");
+    const el = document.getElementById(id);
     if (!el) return;
 
     const diff = new Date(car.endTime).getTime() - Date.now();
@@ -137,8 +167,8 @@ function update() {
       return;
     }
 
-    const s = Math.floor((diff % 60000) / 1000);
     const m = Math.floor(diff / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
 
     el.innerText = `${m}m ${s}s`;
 
@@ -159,7 +189,6 @@ function update() {
       state[car.car] = 3;
     }
 
-    // 💰 NEW BID VOICE
     if (lastBid[car.car] && car.bid > lastBid[car.car]) {
       speak(car.car + " new bid " + car.bid);
     }
